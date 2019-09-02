@@ -1,0 +1,8 @@
+[package]
+name = "chippy8"
+version = "0.1.0"
+authors = ["felang"]
+edition = "2018"
+
+[dependencies]
+rand = "0.7.0"
