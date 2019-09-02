@@ -6,6 +6,7 @@
 
 use std::fs::File;
 use std::io::Read;
+use rand::random;
 
 static FONT_SET: [u16; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -83,81 +84,81 @@ impl Chip8 {
             // Jump to NNN
             0x1000 => self.pc = nnn(code),
 
-            /// Call subroutine at address NNN
+            // Call subroutine at address NNN
             0x2000 => {
                 self.stack.push(self.pc);
                 self.pc = nnn(code)
             }
 
             // Skip next instruction if X and NN match
-            0x3000 if (self.reg[x(code)]) == (nn(code)) => self.pc += 2,
+            0x3000 if (self.reg[ux(code)] as u16) == (nn(code)) => self.pc += 2,
 
             // Skip next instruction if X and NN do not match
-            0x4000 if (self.reg[x(code)]) != (nn(code)) => self.pc += 2,
+            0x4000 if (self.reg[ux(code)] as u16) != (nn(code)) => self.pc += 2,
 
             // Skip next instruction if X and Y match
-            0x5000 if (self.reg[x(code)]) == (self.reg[y(code)]) => self.pc += 2,
+            0x5000 if (self.reg[ux(code)]) == (self.reg[uy(code)]) => self.pc += 2,
 
             // Set X to NN
-            0x6000 => self.reg[x(code)] = nn(code),
+            0x6000 => self.reg[ux(code)] = nn(code) as u8,
 
             // Add NN to X; carry flag is not modified
-            0x7000 => self.reg[x(code)] = (self.reg[x(code)]).overflowing_add(nn(code)).0,
+            0x7000 => self.reg[ux(code)] = (self.reg[ux(code)] as u16).overflowing_add(nn(code)).0 as u8,
 
             0x8000 => {
                 match code & 0x000F {
                     // Set X to value of Y
-                    0x0000 => self.reg[x(code)] = self.reg[y(code)],
+                    0x0000 => self.reg[ux(code)] = self.reg[uy(code)],
 
                     // Set X to value of (X | Y)
-                    0x0001 => self.reg[x(code)] = self.reg[x(code)] | self.reg[y(code)],
+                    0x0001 => self.reg[ux(code)] = self.reg[ux(code)] | self.reg[uy(code)],
 
                     // Set X to value of (X & Y)
-                    0x0002 => self.reg[x(code)] = self.reg[x(code)] & self.reg[y(code)],
+                    0x0002 => self.reg[ux(code)] = self.reg[ux(code)] & self.reg[uy(code)],
 
                     // Set X to value of (X ^ Y)
-                    0x0003 => self.reg[x(code)] = self.reg[x(code)] ^ self.reg[y(code)],
+                    0x0003 => self.reg[ux(code)] = self.reg[ux(code)] ^ self.reg[uy(code)],
 
                     // Add value of Y to X; set carry
                     0x0004 => {
-                        let x = self.reg[x(code)];
-                        let y = self.reg[y(code)];
+                        let x = self.reg[ux(code)];
+                        let y = self.reg[uy(code)];
 
                         let (result, carry) = x.overflowing_add(y);
-                        self.reg[x(code)] = result;
-                        self.reg[0xF] = carry;
+                        self.reg[ux(code)] = result;
+                        self.reg[0xF] = carry as u8;
                     }
 
                     // Subtract value of Y from X; set borrow
                     0x0005 => {
-                        let x = self.reg[x(code)];
-                        let y = self.reg[y(code)];
+                        let x = self.reg[ux(code)];
+                        let y = self.reg[uy(code)];
 
                         let (result, borrow) = x.overflowing_sub(y);
-                        self.reg[x(code)] = result;
-                        self.reg[0xF] = !borrow;
+                        self.reg[ux(code)] = result;
+                        self.reg[0xF] = !borrow as u8;
                     }
 
                     // Store least significant X bit in reg 0xF; shift X 1 to right
                     0x0006 => {
-                        self.reg[0xF] = self.reg[x(code)] & 0x01;
-                        self.reg[x(code)] = self.reg[x(code)] >> 1;
+                        self.reg[0xF] = self.reg[ux(code)] & 0x01;
+                        self.reg[ux(code)] = self.reg[ux(code)] >> 1;
                     }
 
                     // Subtract value of X from Y and store in X; set borrow
                     0x0007 => {
-                        let x = self.reg[x(code)];
-                        let y = self.reg[y(code)];
+                        let x = self.reg[ux(code)];
+                        let y = self.reg[uy(code)];
 
                         let (result, borrow) = y.overflowing_sub(x);
-                        self.reg[x(code)] = result;
-                        self.reg[0xF] = !borrow;
+                        self.reg[ux(code)] = result;
+                        self.reg[0xF] = !borrow as u8;
                     }
 
                     // Store most significant X bit in reg 0xF; shift X 1 to left
                     0x0008 => {
-                        self.reg[0xF] = self.reg[x(code)] & 0x80;
-                        self.reg[x(code)] = self.reg[x(code)] << 1;
+                        self.reg[0xF] = self.reg[ux(code)] & 0x80;
+                        self.reg[ux(code)] = self.reg[ux(code)] << 1;
                     }
 
                     _ => println!("Unknown opcode: {}", code)
@@ -165,29 +166,29 @@ impl Chip8 {
             },
 
             // Skip next instruction if X and Y do not match
-            0x9000 if (self.reg[x(code)]) != (self.reg[y(code)]) => self.pc += 2,
+            0x9000 if (self.reg[ux(code)]) != (self.reg[uy(code)]) => self.pc += 2,
 
             // Set I to NNN
             0xA000 => self.i = nnn(code),
 
             // Jump to NNN + V0
-            0xB000 => self.pc = nnn(code) + self.reg[0x0] as u16,
+            0xB000 => self.pc = nnn(code) + self.reg[0] as u16,
 
             // Set X to ((random number) & NN)
-            0xC000 => self.reg[x(code)] = random() & nn(code),
+            0xC000 => self.reg[ux(code)] = random::<u8>() & nn(code) as u8,
 
             // Draw sprite (https://en.wikipedia.org/wiki/CHIP-8#Opcode_table)
             0xD000 => {
                 self.reg[0xF] = 0;
 
                 for y_line in 0..n(code) {
-                    let pixel = self.memory[self.i + y_line];
+                    let pixel = self.memory[us(self.i + y_line)];
                     for x_line in 0..8 {
                         if pixel & (0x80 >> x_line) != 0 {
-                            if self.gfx[(x(code) + x_line + ((y(code) + y_line) * 64))] {
+                            if self.gfx[us(x(code) + x_line as u16 + ((y(code) + y_line) * 64))] {
                                 self.reg[0xF] = 1;
                             }
-                            self.gfx[(x(code) + x_line + ((y(code) + y_line) * 64))] ^= 1;
+                            self.gfx[us(x(code) + x_line as u16 + ((y(code) + y_line) * 64))] ^= true;
                         }
                     }
                 }
@@ -196,10 +197,10 @@ impl Chip8 {
             0xE000 => {
                 match code & 0x00FF {
                     // Skip next instruction if key X is pressed
-                    0x009E if self.keys[x(code)] => self.pc += 2,
+                    0x009E if self.keys[ux(code)] => self.pc += 2,
 
                     // Skip next instruction if key X is not pressed
-                    0x00A1 if self.keys[x(code)] => self.pc += 2,
+                    0x00A1 if self.keys[ux(code)] => self.pc += 2,
 
                     _ => println!("Unknown opcode: {}", code)
                 }
@@ -208,7 +209,7 @@ impl Chip8 {
             0xF000 => {
                 match code & 0x00FF {
                     // Set X to the delay timer
-                    0x0007 => self.reg[x(code)] = self.delay_timer,
+                    0x0007 => self.reg[ux(code)] = self.delay_timer,
 
                     // Halt until key press; then store in X
                     0x000A => self.waiting_on_input = true,
@@ -228,23 +229,23 @@ impl Chip8 {
                     // Stores binary-coded representation of X at (I until I+2)
                     0x0033 => {
                         let x = x(code);
-                        self.memory[self.i] = x / 100;
-                        self.memory[self.i + 1] = (x / 10) % 10;
-                        self.memory[self.i + 2] = (x % 100) % 10;
+                        self.memory[us(self.i)] = (x / 100) as u8;
+                        self.memory[us(self.i + 1)] = ((x / 10) % 10) as u8;
+                        self.memory[us(self.i + 2)] = ((x % 100) % 10) as u8;
                     }
 
                     // Write all registers to memory, stating at I
                     0x0055 => {
                         for (i, reg) in self.reg.iter().enumerate() {
-                            self.memory[self.i + (i as u16)] = reg;
+                            self.memory[us(self.i + (i as u16))] = *reg;
                         }
                     }
 
                     // Write to all registers from memory, stating at I
                     0x0065 => {
-                        let range = self.i..(self.i + 16);
+                        let range = us(self.i)..us(self.i + 16);
                         for (i, dat) in self.memory[range].iter().enumerate() {
-                            self.reg[i] = dat;
+                            self.reg[i] = *dat;
                         }
                     }
 
@@ -264,9 +265,10 @@ impl Chip8 {
     
     /// Loads the specified game into the emulator, ready for execution.
     pub fn load_game(&mut self, mut file: File) {
-        let game = file.read_to_end(Vec::new());
-        for (i, byte) in game {
-            self.memory[0x200 + i] = byte
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf);
+        for (i, byte) in buf.iter().enumerate() {
+            self.memory[0x200 + i] = *byte
         }
     }
     
@@ -287,17 +289,23 @@ impl Chip8 {
             sound_timer: 0
         };
 
-        for (i, byte) in FONT_SET {
-            chip8.memory[i] = byte
+        for (i, byte) in FONT_SET.iter().enumerate() {
+            // chip8.memory[i] = byte
         }
 
         chip8
     }
 }
 
+fn us(u: u16) -> usize { u as usize }
+
 fn x(code: u16) -> u16 { (code & 0x0F00) >> 8 }
 
+fn ux(code: u16) -> usize { us((code & 0x0F00) >> 8) }
+
 fn y(code: u16) -> u16 { (code & 0x00F0) >> 4 }
+
+fn uy(code: u16) -> usize { us((code & 0x00F0) >> 4) }
 
 fn n(code: u16) -> u16 { code & 0x000F }
 
