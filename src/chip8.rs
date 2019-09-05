@@ -70,14 +70,14 @@ impl Chip8 {
     fn execute_opcode(&mut self, code: u16) {
         match code & 0xF000 {
             0x0000 => {
-                match code & 0x000F {
+                match code & 0x00FF {
                     // Clear screen (0x00E0)
-                    0x0000 => self.gfx = [false; 64 * 32],
+                    0x00E0 => self.gfx = [false; 64 * 32],
 
                     // Return from subroutine (0x00EE)
-                    0x000E => self.pc = self.stack.pop().expect("Invalid opcode"),
+                    0x00EE => self.pc = self.stack.pop().expect("Invalid opcode"),
 
-                    _ => println!("Unknown opcode: {}", code)
+                    _ => println!("Unknown opcode: {:#X}", code)
                 }
             }
 
@@ -92,12 +92,15 @@ impl Chip8 {
 
             // Skip next instruction if X and NN match
             0x3000 if (self.reg[ux(code)] as u16) == (nn(code)) => self.pc += 2,
+            0x3000 => (),
 
             // Skip next instruction if X and NN do not match
             0x4000 if (self.reg[ux(code)] as u16) != (nn(code)) => self.pc += 2,
+            0x4000 => (),
 
             // Skip next instruction if X and Y match
             0x5000 if (self.reg[ux(code)]) == (self.reg[uy(code)]) => self.pc += 2,
+            0x5000 => (),
 
             // Set X to NN
             0x6000 => self.reg[ux(code)] = nn(code) as u8,
@@ -161,12 +164,13 @@ impl Chip8 {
                         self.reg[ux(code)] = self.reg[ux(code)] << 1;
                     }
 
-                    _ => println!("Unknown opcode: {}", code)
+                    _ => println!("Unknown opcode: {:#X}", code)
                 }
             },
 
             // Skip next instruction if X and Y do not match
             0x9000 if (self.reg[ux(code)]) != (self.reg[uy(code)]) => self.pc += 2,
+            0x9000 => (),
 
             // Set I to NNN
             0xA000 => self.i = nnn(code),
@@ -198,11 +202,13 @@ impl Chip8 {
                 match code & 0x00FF {
                     // Skip next instruction if key X is pressed
                     0x009E if self.keys[ux(code)] => self.pc += 2,
+                    0x009E => (),
 
                     // Skip next instruction if key X is not pressed
                     0x00A1 if self.keys[ux(code)] => self.pc += 2,
+                    0x00A1 => (),
 
-                    _ => println!("Unknown opcode: {}", code)
+                    _ => println!("Unknown opcode: {:#X}", code)
                 }
             }
 
@@ -249,26 +255,24 @@ impl Chip8 {
                         }
                     }
 
-                    _ => println!("Unknown opcode: {}", code)
+                    _ => println!("Unknown opcode: {:#X}", code)
                 }
             }
 
-            _ => println!("Unknown opcode: {}", code)
+            _ => println!("Unknown opcode: {:#X}", code)
         }
     }
 
     /// Returns the current opcode and advances the program counter by 2
     fn advance(&mut self) -> u16 {
         self.pc += 2;
-        (self.pc - 2) << 8 | (self.pc - 1)
+        (self.memory[us(self.pc - 2)] as u16) << 8 | (self.memory[us(self.pc - 1)] as u16)
     }
     
-    /// Loads the specified game into the emulator, ready for execution.
-    pub fn load_game(&mut self, mut file: File) {
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf);
-        for (i, byte) in buf.iter().enumerate() {
-            self.memory[0x200 + i] = *byte
+    /// Loads the specified game data into the emulator, ready for execution.
+    pub fn load_game(&mut self, data: Vec<u8>) {
+        for (i, byte) in data.iter().enumerate() {
+            self.memory[0x200 + i] = *byte;
         }
     }
     
@@ -290,7 +294,9 @@ impl Chip8 {
         };
 
         for (i, byte) in FONT_SET.iter().enumerate() {
-            // chip8.memory[i] = byte
+            let i = i * 2;
+            chip8.memory[i] = (byte >> 8) as u8;
+            chip8.memory[i + 1] = (byte & 0x00FF) as u8;
         }
 
         chip8

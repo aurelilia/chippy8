@@ -16,12 +16,20 @@ use chip8::Chip8;
 use imgui::{Ui, Condition};
 use glium::glutin;
 use std::process;
+use std::fs;
+use std::thread::sleep;
+use std::time::Duration;
 
 fn main() {
-    let mut system = graphics::setup(Chip8::new());
+    let mut chip8 = Chip8::new();
+    chip8.load_game(fs::read("games/TETRIS").expect("I CANT READ!"));
+
+    let mut system = graphics::setup(chip8);
     loop {
+        // TODO: Proper timing
+        sleep(Duration::from_micros(16));
         graphics::input(&mut system);
-        chip8.cycle();
+        system.chip8.cycle();
         graphics::draw(&mut system);
     }
 }
