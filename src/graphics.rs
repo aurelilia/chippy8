@@ -1,83 +1,57 @@
-use imgui::*;
-use glium::{glutin, Surface};
-use std::process;
-use imgui_glium_renderer::Renderer;
-use imgui_winit_support::{WinitPlatform, HiDpiMode};
-use crate::chip8::Chip8;
+use crate::{chip8::Chip8, SCALE};
+use tetra::{
+    graphics::{
+        self,
+        mesh::{GeometryBuilder, ShapeStyle},
+        Color, DrawParams, Rectangle,
+    },
+    input::{self, Key},
+    math::Vec2,
+    Context, State,
+};
 
 pub struct System {
-    events: glutin::EventsLoop,
-    display: glium::Display,
-    imgui: Context,
-    platform: WinitPlatform,
     pub chip8: Chip8,
-    renderer: Renderer,
+    needs_draw: bool,
 }
 
-pub fn draw(system: &mut System) {
-    let gl_window = system.display.gl_window();
-    let window = gl_window.window();
-
-    let io = system.imgui.io_mut();
-    system.platform
-        .prepare_frame(io, &window)
-        .expect("Failed to start frame");
-
-
-    let mut ui = system.imgui.frame();
-    super::draw_gui(&mut ui, &system.chip8);
-
-    let mut target = system.display.draw();
-    target.clear_color(0.05, 0.05, 0.05, 1.0);
-    system.platform.prepare_render(&ui, &window);
-
-    let ui_data = ui.render();
-    system.renderer.render(&mut target, ui_data).unwrap();
-
-    target.finish().unwrap();
-}
-
-pub fn input(system: &mut System) {
-    let events = &mut system.events;
-    let platform = &mut system.platform;
-    let display = &mut system.display;
-    let imgui = &mut system.imgui;
-    let chip8 = &mut system.chip8;
-
-    events.poll_events(|ev| {
-        platform.handle_event(imgui.io_mut(), display.gl_window().window(), &ev);
-        if let glutin::Event::WindowEvent { event, .. } = ev {
-            crate::handle_input(event, chip8)
+impl System {
+    pub fn new(chip8: Chip8) -> System {
+        System {
+            chip8,
+            needs_draw: false,
         }
-    });
+    }
 }
 
-pub fn setup(chip8: Chip8) -> System {
-    let mut events = glutin::EventsLoop::new();
-    let wb = glutin::WindowBuilder::new()
-        .with_title("chippy8")
-        .with_dimensions(glutin::dpi::LogicalSize::new(1024f64, 768f64));
-    let cb = glutin::ContextBuilder::new();
-    let display = glium::Display::new(wb, cb, &events).unwrap();
+impl State for System {
+    fn draw(&mut self, ctx: &mut Context) -> tetra::Result {
+        let is_pressed = |key: Key| input::is_key_down(ctx, key);
+        if !self.chip8.cycle(is_pressed) {
+            // return Ok(());
+        }
 
-    let mut imgui = Context::create();
-    imgui.set_ini_filename(None);
+        graphics::clear(ctx, Color::BLACK);
 
-    let mut platform = WinitPlatform::init(&mut imgui);
-    {
-        let gl_window = display.gl_window();
-        let window = gl_window.window();
-        platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
-    }
+        let mut builder = GeometryBuilder::new();
+        let style = ShapeStyle::Fill;
+        let color = Color::WHITE;
+        let pixels = self.chip8.pixels();
+        for x in 0..64 {
+            for y in 0..32 {
+                if pixels[x + (y * 64)] {
+                    let bounds = Rectangle::new(x as f32 * SCALE, y as f32 * SCALE, SCALE, SCALE);
+                    builder.rectangle(style, bounds)?;
+                }
+            }
+        }
+        let mesh = builder.build_mesh(ctx)?;
+        mesh.draw(
+            ctx,
+            DrawParams::new().position(Vec2::new(0.0, 0.0)).color(color),
+        );
 
-    let renderer = Renderer::init(&mut imgui, &display).unwrap();
-
-    System {
-        events,
-        display,
-        imgui,
-        platform,
-        chip8,
-        renderer
+        self.needs_draw = false;
+        Ok(())
     }
 }

@@ -1,12 +1,5 @@
-/*
- * Developed by Ellie Ang. (git@angm.xyz).
- * Last modified on 9/2/19 10:02 PM.
- * This file is under the GPL3 license. See LICENSE in the root directory of this repository for details.
- */
-
-use std::fs::File;
-use std::io::Read;
 use rand::random;
+use tetra::input::Key;
 
 static FONT_SET: [u16; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -24,7 +17,26 @@ static FONT_SET: [u16; 80] = [
     0xF0, 0x80, 0x80, 0x80, 0xF0, // C
     0xE0, 0x90, 0x90, 0x90, 0xE0, // D
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-    0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+    0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+];
+
+const KEYS: [Key; 16] = [
+    Key::V,
+    Key::B,
+    Key::N,
+    Key::G,
+    Key::H,
+    Key::J,
+    Key::T,
+    Key::Y,
+    Key::U,
+    Key::Num6,
+    Key::Num7,
+    Key::Num8,
+    Key::A,
+    Key::Q,
+    Key::W,
+    Key::S,
 ];
 
 /// The full data structure of the Chip8 - contains all state.
@@ -35,39 +47,33 @@ pub struct Chip8 {
     i: u16,
     pc: u16,
     stack: Vec<u16>,
-
     gfx: [bool; 64 * 32],
-    keys: [bool; 16],
-    /// True when waiting on user input (opcode FX0A)
-    waiting_on_input: bool,
 
     delay_timer: u8,
-    sound_timer: u8
+    sound_timer: u8,
 }
 
 impl Chip8 {
     /// Advance state of the emulator by 1 cycle.
     /// Returns if graphics should redraw.
-    pub fn cycle(&mut self) -> bool {
-        if self.waiting_on_input {
-            return false
-        }
-
+    pub fn cycle(&mut self, is_pressed: impl Fn(Key) -> bool) -> bool {
         let opcode = self.advance();
-        self.execute_opcode(opcode);
+        self.execute_opcode(opcode, is_pressed);
 
         if self.delay_timer > 0 {
             self.delay_timer -= 1;
         }
         if self.sound_timer > 0 {
-            if self.sound_timer == 1 { println!("Beep!") }
+            if self.sound_timer == 1 {
+                println!("Beep!")
+            }
             self.sound_timer -= 1;
         }
 
         (opcode & 0xF000) == 0xD000
     }
 
-    fn execute_opcode(&mut self, code: u16) {
+    fn execute_opcode(&mut self, code: u16, is_pressed: impl Fn(Key) -> bool) {
         match code & 0xF000 {
             0x0000 => {
                 match code & 0x00FF {
@@ -77,7 +83,7 @@ impl Chip8 {
                     // Return from subroutine (0x00EE)
                     0x00EE => self.pc = self.stack.pop().expect("Invalid opcode"),
 
-                    _ => println!("Unknown opcode: {:#X}", code)
+                    _ => println!("Unknown opcode: {:#X}", code),
                 }
             }
 
@@ -106,7 +112,9 @@ impl Chip8 {
             0x6000 => self.reg[ux(code)] = nn(code) as u8,
 
             // Add NN to X; carry flag is not modified
-            0x7000 => self.reg[ux(code)] = (self.reg[ux(code)] as u16).overflowing_add(nn(code)).0 as u8,
+            0x7000 => {
+                self.reg[ux(code)] = (self.reg[ux(code)] as u16).overflowing_add(nn(code)).0 as u8
+            }
 
             0x8000 => {
                 match code & 0x000F {
@@ -164,9 +172,9 @@ impl Chip8 {
                         self.reg[ux(code)] = self.reg[ux(code)] << 1;
                     }
 
-                    _ => println!("Unknown opcode: {:#X}", code)
+                    _ => println!("Unknown opcode: {:#X}", code),
                 }
-            },
+            }
 
             // Skip next instruction if X and Y do not match
             0x9000 if (self.reg[ux(code)]) != (self.reg[uy(code)]) => self.pc += 2,
@@ -185,14 +193,16 @@ impl Chip8 {
             0xD000 => {
                 self.reg[0xF] = 0;
 
+                let x = self.reg[us(x(code))] as u16;
+                let y = self.reg[us(y(code))] as u16;
                 for y_line in 0..n(code) {
                     let pixel = self.memory[us(self.i + y_line)];
                     for x_line in 0..8 {
                         if pixel & (0x80 >> x_line) != 0 {
-                            if self.gfx[us(x(code) + x_line as u16 + ((y(code) + y_line) * 64))] {
+                            if self.gfx[us(x + x_line as u16 + ((y + y_line) * 64))] {
                                 self.reg[0xF] = 1;
                             }
-                            self.gfx[us(x(code) + x_line as u16 + ((y(code) + y_line) * 64))] ^= true;
+                            self.gfx[us(x + x_line as u16 + ((y + y_line) * 64))] ^= true;
                         }
                     }
                 }
@@ -201,14 +211,14 @@ impl Chip8 {
             0xE000 => {
                 match code & 0x00FF {
                     // Skip next instruction if key X is pressed
-                    0x009E if self.keys[ux(code)] => self.pc += 2,
+                    0x009E if is_pressed(KEYS[ux(code)]) => self.pc += 2,
                     0x009E => (),
 
                     // Skip next instruction if key X is not pressed
-                    0x00A1 if self.keys[ux(code)] => self.pc += 2,
+                    0x00A1 if !is_pressed(KEYS[ux(code)]) => self.pc += 2,
                     0x00A1 => (),
 
-                    _ => println!("Unknown opcode: {:#X}", code)
+                    _ => println!("Unknown opcode: {:#X}", code),
                 }
             }
 
@@ -217,8 +227,18 @@ impl Chip8 {
                     // Set X to the delay timer
                     0x0007 => self.reg[ux(code)] = self.delay_timer,
 
-                    // Halt until key press; then store in X
-                    0x000A => self.waiting_on_input = true,
+                    // Halt until key press; then store in Register F
+                    0x000A => {
+                        // See if a key is pressed and set RegF if so
+                        let key = KEYS.iter().enumerate().find(|(_, key)| is_pressed(**key));
+                        if let Some((idx, _)) = key {
+                            self.reg[0xF] = idx as u8;
+                        } else {
+                            // If not, just reset the PC to make the emu keep
+                            // executing this instruction until a key is pressed
+                            self.pc -= 2;
+                        }
+                    }
 
                     // Set delay timer to X
                     0x0015 => self.delay_timer = x(code) as u8,
@@ -255,11 +275,11 @@ impl Chip8 {
                         }
                     }
 
-                    _ => println!("Unknown opcode: {:#X}", code)
+                    _ => println!("Unknown opcode: {:#X}", code),
                 }
             }
 
-            _ => println!("Unknown opcode: {:#X}", code)
+            _ => println!("Unknown opcode: {:#X}", code),
         }
     }
 
@@ -268,14 +288,18 @@ impl Chip8 {
         self.pc += 2;
         (self.memory[us(self.pc - 2)] as u16) << 8 | (self.memory[us(self.pc - 1)] as u16)
     }
-    
+
     /// Loads the specified game data into the emulator, ready for execution.
     pub fn load_game(&mut self, data: Vec<u8>) {
         for (i, byte) in data.iter().enumerate() {
             self.memory[0x200 + i] = *byte;
         }
     }
-    
+
+    pub fn pixels(&self) -> &[bool] {
+        &self.gfx
+    }
+
     pub fn new() -> Self {
         let mut chip8 = Self {
             memory: [0; 4096],
@@ -284,13 +308,10 @@ impl Chip8 {
             i: 0,
             pc: 0x200,
             stack: Vec::with_capacity(16),
-
             gfx: [false; 64 * 32],
-            keys: [false; 16],
-            waiting_on_input: false,
 
             delay_timer: 0,
-            sound_timer: 0
+            sound_timer: 0,
         };
 
         for (i, byte) in FONT_SET.iter().enumerate() {
@@ -303,18 +324,34 @@ impl Chip8 {
     }
 }
 
-fn us(u: u16) -> usize { u as usize }
+fn us(u: u16) -> usize {
+    u as usize
+}
 
-fn x(code: u16) -> u16 { (code & 0x0F00) >> 8 }
+fn x(code: u16) -> u16 {
+    (code & 0x0F00) >> 8
+}
 
-fn ux(code: u16) -> usize { us((code & 0x0F00) >> 8) }
+fn ux(code: u16) -> usize {
+    us((code & 0x0F00) >> 8)
+}
 
-fn y(code: u16) -> u16 { (code & 0x00F0) >> 4 }
+fn y(code: u16) -> u16 {
+    (code & 0x00F0) >> 4
+}
 
-fn uy(code: u16) -> usize { us((code & 0x00F0) >> 4) }
+fn uy(code: u16) -> usize {
+    us((code & 0x00F0) >> 4)
+}
 
-fn n(code: u16) -> u16 { code & 0x000F }
+fn n(code: u16) -> u16 {
+    code & 0x000F
+}
 
-fn nn(code: u16) -> u16 { code & 0x00FF }
+fn nn(code: u16) -> u16 {
+    code & 0x00FF
+}
 
-fn nnn(code: u16) -> u16 { code & 0x0FFF }
+fn nnn(code: u16) -> u16 {
+    code & 0x0FFF
+}
