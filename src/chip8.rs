@@ -1,7 +1,7 @@
 use rand::random;
 use tetra::input::Key;
 
-static FONT_SET: [u16; 80] = [
+static FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
     0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -336,9 +336,7 @@ impl Chip8 {
         };
 
         for (i, byte) in FONT_SET.iter().enumerate() {
-            let i = i * 2;
-            chip8.memory[i] = (byte >> 8) as u8;
-            chip8.memory[i + 1] = (byte & 0x00FF) as u8;
+            chip8.memory[i] = *byte;
         }
 
         chip8
