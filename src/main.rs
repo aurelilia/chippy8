@@ -4,7 +4,7 @@ mod graphics;
 use chip8::Chip8;
 use graphics::System;
 use std::{env, error::Error, ffi::OsStr, fs};
-use tetra::{ContextBuilder};
+use tetra::ContextBuilder;
 
 pub const SCALE: f32 = 16.0;
 

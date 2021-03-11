@@ -39,6 +39,9 @@ const KEYS: [Key; 16] = [
     Key::S,
 ];
 
+const FPS: usize = 60;
+const CLOCK_SPEED: usize = 540;
+
 /// The full data structure of the Chip8 - contains all state.
 pub struct Chip8 {
     memory: [u8; 4096],
@@ -54,11 +57,13 @@ pub struct Chip8 {
 }
 
 impl Chip8 {
-    /// Advance state of the emulator by 1 cycle.
-    /// Returns if graphics should redraw.
-    pub fn cycle(&mut self, is_pressed: impl Fn(Key) -> bool) -> bool {
-        let opcode = self.advance();
-        self.execute_opcode(opcode, is_pressed);
+    /// Advance state of the emulator by 1 'tick'.
+    /// A tick happens when `delay_timer` is counted
+    /// down, and this should therefore be called at 60Hz.
+    pub fn tick(&mut self, is_pressed: impl Fn(Key) -> bool) {
+        for _ in 0..(CLOCK_SPEED / FPS) {
+            self.cycle(&is_pressed);
+        }
 
         if self.delay_timer > 0 {
             self.delay_timer -= 1;
@@ -69,11 +74,15 @@ impl Chip8 {
             }
             self.sound_timer -= 1;
         }
-
-        (opcode & 0xF000) == 0xD000
     }
 
-    fn execute_opcode(&mut self, code: u16, is_pressed: impl Fn(Key) -> bool) {
+    /// Advance state of the emulator by 1 cycle.
+    fn cycle(&mut self, is_pressed: &impl Fn(Key) -> bool) {
+        let opcode = self.advance();
+        self.execute_opcode(opcode, is_pressed);
+    }
+
+    fn execute_opcode(&mut self, code: u16, is_pressed: &impl Fn(Key) -> bool) {
         match code & 0xF000 {
             0x0000 => {
                 match code & 0x00FF {

@@ -5,7 +5,7 @@ use tetra::{
         mesh::{GeometryBuilder, ShapeStyle},
         Color, DrawParams, Rectangle,
     },
-    input::{self, Key},
+    input,
     math::Vec2,
     Context, State,
 };
@@ -26,10 +26,7 @@ impl System {
 
 impl State for System {
     fn draw(&mut self, ctx: &mut Context) -> tetra::Result {
-        let is_pressed = |key: Key| input::is_key_down(ctx, key);
-        if !self.chip8.cycle(is_pressed) {
-            // return Ok(());
-        }
+        self.chip8.tick(|key| input::is_key_down(ctx, key));
 
         graphics::clear(ctx, Color::BLACK);
 
