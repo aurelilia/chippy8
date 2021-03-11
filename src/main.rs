@@ -6,7 +6,7 @@ use graphics::System;
 use std::{env, error::Error, ffi::OsStr, fs};
 use tetra::ContextBuilder;
 
-pub const SCALE: f32 = 16.0;
+pub const SCALE: f32 = 32.0;
 
 fn main() {
     if let Some(file) = env::args_os().nth(1) {
